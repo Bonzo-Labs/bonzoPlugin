@@ -29,6 +29,7 @@ async function bootstrap(): Promise<void> {
       tools: [], // use an empty array if you want to load all tools
       context: {
         mode: AgentMode.RETURN_BYTES,
+        accountId: "0.0.7285744",
       },
     },
   });
