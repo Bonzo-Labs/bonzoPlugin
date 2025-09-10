@@ -15,7 +15,7 @@
     "@hashgraph/sdk": "^2.69.0",
     "@langchain/openai": "^0.6.3",
     "bignumber.js": "^9.3.1",
-    "hedera-agent-kit": "file://Users/jaycool/code/temp/hedera-agent-kit/typescript",
+    "hedera-agent-kit": "^3.2.0",
     "langchain": "^0.3.30",
     "prompts": "^2.4.2",
     "zod": "^3.25.76"

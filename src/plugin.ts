@@ -1,5 +1,5 @@
 import type { Plugin, Context } from 'hedera-agent-kit';
-import bonzoMarketDataTool, { BONZO_MARKET_DATA_TOOL } from './tools.js';
+import { bonzoMarketDataTool, BONZO_MARKET_DATA_TOOL } from './tools.ts';
 
 // Export the plugin
 export const bonzoPlugin: Plugin = {
