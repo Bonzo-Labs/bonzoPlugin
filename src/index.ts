@@ -1,75 +1,43 @@
-import { HederaLangchainToolkit, AgentMode, coreQueriesPlugin } from "hedera-agent-kit";
-import { ChatOpenAI } from "@langchain/openai";
-import { ChatPromptTemplate } from "@langchain/core/prompts";
-import { AgentExecutor, createToolCallingAgent } from "langchain/agents";
-import { BufferMemory } from "langchain/memory";
+import "dotenv/config";
+import { AgentMode } from "hedera-agent-kit";
 import { Client, PrivateKey } from "@hashgraph/sdk";
 import prompts from "prompts";
-import { bonzoPlugin } from "./plugin.ts";
+import { createBonzoAgentClient } from "./client.ts";
 
 async function bootstrap(): Promise<void> {
-  // Initialise OpenAI LLM
-  const llm = new ChatOpenAI({
-    model: "gpt-4.1",
-  });
+  // Hedera client setup — choose network via env HEDERA_NETWORK ("mainnet"|"testnet")
+  const network = (process.env.HEDERA_NETWORK || "testnet").toLowerCase();
+  const client = network === "mainnet" ? Client.forMainnet() : Client.forTestnet();
+  // Support both ACCOUNT_ID/PRIVATE_KEY and HEDERA_ACCOUNT_ID/HEDERA_PRIVATE_KEY
+  const accountId = process.env.ACCOUNT_ID || process.env.HEDERA_ACCOUNT_ID;
+  const privateKey = process.env.PRIVATE_KEY || process.env.HEDERA_PRIVATE_KEY;
+  if (accountId && privateKey) {
+    try {
+      client.setOperator(accountId, PrivateKey.fromStringECDSA(privateKey));
+    } catch (e) {
+      console.warn(
+        "Failed to set operator from env. Ensure ECDSA private key format (0x...) and valid account id.",
+        e,
+      );
+    }
+  } else {
+    console.warn(
+      "No operator configured. Set ACCOUNT_ID/PRIVATE_KEY or HEDERA_ACCOUNT_ID/HEDERA_PRIVATE_KEY in your .env",
+    );
+  }
+  // Mode selection via env (HAK_MODE or AGENT_MODE): "autonomous" or "return_bytes"
+  const modeEnv = (process.env.HAK_MODE || process.env.AGENT_MODE || "return_bytes").toLowerCase();
+  const mode = ["autonomous", "auto"].includes(modeEnv)
+    ? AgentMode.AUTONOMOUS
+    : AgentMode.RETURN_BYTES;
 
-  // Hedera client setup (Testnet by default)
-  const client = Client.forMainnet();
-  //
-  // .setOperator(
-  //     process.env.ACCOUNT_ID!,
-  //     PrivateKey.fromStringECDSA(process.env.PRIVATE_KEY!),
-  // );
-
-  // Prepare Hedera toolkit (load all tools by default)
-  const hederaAgentToolkit = new HederaLangchainToolkit({
+  const { agentExecutor } = await createBonzoAgentClient({
     client,
-    configuration: {
-      plugins: [bonzoPlugin, coreQueriesPlugin],
-      tools: [], // use an empty array if you want to load all tools
-      context: {
-        mode: AgentMode.RETURN_BYTES,
-        accountId: "0.0.7285744",
-      },
-    },
-  });
-
-  // Load the structured chat prompt template
-  const prompt = ChatPromptTemplate.fromMessages([
-    ["system", "You are a helpful assistant"],
-    ["placeholder", "{chat_history}"],
-    ["human", "{input}"],
-    ["placeholder", "{agent_scratchpad}"],
-  ]);
-
-  // Fetch tools from toolkit
-  // cast to any to avoid excessively deep type instantiation caused by zod@3.25
-  const tools = hederaAgentToolkit.getTools();
-
-  // Create the underlying agent
-  const agent = createToolCallingAgent({
-    llm,
-    tools,
-    prompt,
-  });
-
-  // In-memory conversation history
-  const memory = new BufferMemory({
-    memoryKey: "chat_history",
-    inputKey: "input",
-    outputKey: "output",
-    returnMessages: true,
-  });
-
-  // Wrap everything in an executor that will maintain memory
-  const agentExecutor = new AgentExecutor({
-    agent,
-    tools,
-    memory,
-    returnIntermediateSteps: false,
+    mode,
   });
 
   console.log('Hedera Agent CLI Chatbot — type "exit" to quit');
+  console.log(`Mode: ${mode === AgentMode.AUTONOMOUS ? "AUTONOMOUS" : "RETURN_BYTES"}`);
 
   while (true) {
     const { userInput } = await prompts({

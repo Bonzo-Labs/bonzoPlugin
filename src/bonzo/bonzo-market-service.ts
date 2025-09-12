@@ -84,6 +84,7 @@ export interface BonzoReserve {
     name: string;
     decimals: number;
     htsAddress: string;
+    evmAddress?: string;
 
     // APY rates (already numbers from API)
     supplyAPY: number;
@@ -214,6 +215,7 @@ export class BonzoMarketService {
                     name: raw.name,
                     decimals: raw.decimals,
                     htsAddress: raw.hts_address,
+                    evmAddress: (raw as any).evm_address,
 
                     // APY rates (already numbers)
                     supplyAPY: raw.supply_apy,
