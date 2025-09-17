@@ -1,5 +1,5 @@
 import type { Client } from "@hashgraph/sdk";
-import { ContractExecuteTransaction } from "@hashgraph/sdk";
+import { ContractExecuteTransaction, Hbar } from "@hashgraph/sdk";
 import { Interface } from "@ethersproject/abi";
 import {
   AgentMode,
@@ -76,7 +76,13 @@ const borrowExecute = async (
     const rate = RATE_MODE_MAP[rateMode];
     const data = iface.encodeFunctionData("borrow", [token, amountWei, rate, referralCode, onBehalfOf]);
 
-    const { gas, fee } = defaultGasAndFee("heavy");
+    // Gas/fee configuration with per-tool env overrides
+    const base = defaultGasAndFee("heavy");
+    const gasOverride = Number(process.env.BONZO_GAS_BORROW || "");
+    const feeOverride = Number(process.env.BONZO_MAX_FEE_HBAR_BORROW || "");
+    const gas = Number.isFinite(gasOverride) && gasOverride > 0 ? Math.trunc(gasOverride) : base.gas;
+    const fee = Number.isFinite(feeOverride) && feeOverride > 0 ? new Hbar(feeOverride) : base.fee;
+
     const tx = new ContractExecuteTransaction()
       .setContractId(contractIdFromEvm(lendingPool))
       .setGas(gas)

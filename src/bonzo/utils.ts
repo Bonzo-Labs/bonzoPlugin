@@ -101,8 +101,8 @@ export const defaultGasAndFee = (kind: "light" | "heavy") => {
       : Number.isFinite(envHeavy) && kind === "heavy"
       ? Math.max(0, Math.trunc(envHeavy))
       : kind === "light"
-      ? 1_000_000 // Increased to 6M for ERC20 operations on Hedera
-      : 2_000_000; // Increased to 8M for complex operations
+      ? 6_000_000 // Increased to 6M for ERC20 operations on Hedera
+      : 10_000_000; // Increased to 10M for complex operations
 
   const feeHbar = Number.isFinite(envFee) && envFee > 0 ? envFee : 2; // 2 HBAR max fee (reasonable for most operations)
 
