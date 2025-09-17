@@ -1,51 +1,63 @@
 # Bonzo Plugin for Hedera Agent Kit
 
-Bonzo is an Aave v2–compatible lending protocol deployed on Hedera. This plugin integrates Bonzo operations into Hedera Agent Kit, enabling agents to read market data and perform core actions like approve, deposit (supply), withdraw, borrow, and repay using the Hashgraph SDK.
+Bonzo is an Aave v2–compatible lending protocol on Hedera. This plugin integrates Bonzo operations into Hedera Agent Kit, enabling agents to read market data and perform core actions like approve, deposit (supply), withdraw, borrow, and repay using the Hashgraph SDK.
 
 Status
+
 - Implemented: Market data, Approve, Deposit, Withdraw, Borrow, Repay
 
 ## Features
+
 - Market data from Bonzo public API (tokens, APYs, liquidity, utilization)
 - Aave v2–style actions via Bonzo LendingPool (Hashgraph transactions)
 - AgentMode-aware execution: autonomous on-chain execution or return frozen tx bytes
 - Address resolution from a single source of truth JSON
 
 ## Installation
+
 ```bash
 cd bonzoPlugin
 bun install
 ```
 
+## Quick Start (CLI)
+
+```bash
+# Testnet by default
+bun run src/index.ts
+
+# Or specify network and operator
+HEDERA_NETWORK=mainnet ACCOUNT_ID=0.0.x PRIVATE_KEY=0x... bun run src/index.ts
+```
+
 ## Quick Start (with Hedera Agent Kit)
+
 ```ts
 import { HederaLangchainToolkit, AgentMode } from "hedera-agent-kit";
-import { bonzoPlugin } from "./src/plugin"; // or from your package entry
+import { bonzoPlugin } from "./src/plugin.ts";
 
-// Create Hedera SDK client for your network (mainnet/testnet)
-// Ensure ACCOUNT_ID and PRIVATE_KEY are configured in your environment
-
-const hederaAgentToolkit = new HederaLangchainToolkit({
+const toolkit = new HederaLangchainToolkit({
   configuration: {
     context: { mode: AgentMode.AUTONOMOUS },
     plugins: [bonzoPlugin],
-    tools: [], // load all tools from plugins
+    tools: [],
   },
 });
 
-const tools = hederaAgentToolkit.getTools();
-// Use tools in your agent or call execute(client, context, params) directly
+const tools = toolkit.getTools();
 ```
 
 ## Tools
 
-1) Market Data Tool
+1. Market Data Tool
+
 - Method: `bonzo_market_data_tool`
 - Description: Fetches supported tokens, supply/borrow APYs, liquidity, and utilization
 - Parameters: none
 - Returns: human-readable summary
 
-2) Approve ERC20 Tool (planned)
+2. Approve ERC20 Tool
+
 - Method: `approve_erc20_tool`
 - Description: Approves the Bonzo LendingPool to spend a given ERC20 underlying asset
 - Params:
@@ -54,7 +66,8 @@ const tools = hederaAgentToolkit.getTools();
   - optional.spender: string (defaults to LendingPool)
   - optional.useMax: boolean (approve max)
 
-3) Deposit Tool (planned)
+3. Deposit Tool
+
 - Method: `bonzo_deposit_tool`
 - Description: Supplies tokens to Bonzo
 - Params:
@@ -63,7 +76,8 @@ const tools = hederaAgentToolkit.getTools();
   - optional.onBehalfOf: Hedera account ID
   - optional.referralCode: number (default 0)
 
-4) Withdraw Tool (planned)
+4. Withdraw Tool
+
 - Method: `bonzo_withdraw_tool`
 - Description: Withdraws supplied tokens from Bonzo
 - Params:
@@ -72,7 +86,8 @@ const tools = hederaAgentToolkit.getTools();
   - optional.to: Hedera account ID
   - optional.withdrawAll: boolean
 
-5) Borrow Tool (planned)
+5. Borrow Tool
+
 - Method: `bonzo_borrow_tool`
 - Description: Borrows tokens from Bonzo
 - Params:
@@ -82,7 +97,8 @@ const tools = hederaAgentToolkit.getTools();
   - optional.onBehalfOf: Hedera account ID
   - optional.referralCode: number (default 0)
 
-6) Repay Tool (planned)
+6. Repay Tool
+
 - Method: `bonzo_repay_tool`
 - Description: Repays borrowed tokens
 - Params:
@@ -93,29 +109,33 @@ const tools = hederaAgentToolkit.getTools();
   - optional.repayAll: boolean
 
 ## Address Resolution
+
 - All contract addresses are sourced from `bonzo-contracts.json` at the plugin root.
 - Networks: `hedera_mainnet` and `hedera_testnet` sections.
 - Per-token addresses: `token` (underlying ERC20), `aToken`, `stableDebt`, `variableDebt`.
 - Core contracts: `LendingPool`, `LendingPoolAddressesProvider`, oracles, helpers.
-- The plugin resolves the current network via `client.ledgerId` and chooses the corresponding address. Both Testnet and Mainnet are supported.
+- The plugin resolves the current network via the Hedera client and selects the corresponding address. Both Testnet and Mainnet are supported.
 
 ## Network Selection
-- CLI uses `HEDERA_NETWORK` env var to select network: `mainnet` or `testnet` (default: `testnet`).
-- Example:
+
+- Use `HEDERA_NETWORK` env var to select network: `mainnet` or `testnet` (default: `testnet`).
+
 ```bash
-HEDERA_NETWORK=mainnet ACCOUNT_ID=0.0.x PRIVATE_KEY=... bun run src/index.ts
+HEDERA_NETWORK=mainnet ACCOUNT_ID=0.0.x PRIVATE_KEY=0x... bun run src/index.ts
 ```
 
 ## Transaction Execution
+
 - ABI encoding via `@ethersproject/abi` Interfaces (Aave v2 signatures)
 - Transactions executed/frozen via Hashgraph SDK `ContractExecuteTransaction`
 - AgentMode handling:
   - `AUTONOMOUS`: submit and return receipt/transactionId
   - `RETURN_BYTES`: freeze, return hex bytes for external signing
 
-## Usage Examples (planned tools)
+## Usage Examples
 
 Approve + Deposit
+
 ```ts
 await approveErc20.execute(client, context, {
   required: { tokenSymbol: "USDC", amount: "1000" },
@@ -128,6 +148,7 @@ await deposit.execute(client, context, {
 ```
 
 Borrow + Repay (variable)
+
 ```ts
 await borrow.execute(client, context, {
   required: { tokenSymbol: "USDC", amount: "50", rateMode: "variable" },
@@ -139,6 +160,7 @@ await repay.execute(client, context, {
 ```
 
 Withdraw
+
 ```ts
 await withdraw.execute(client, context, {
   required: { tokenSymbol: "USDC", amount: "100" },
@@ -147,32 +169,46 @@ await withdraw.execute(client, context, {
 
 ## Development
 
-Repo Structure (aligns with `hak-memejob-plugin`)
+Repo Structure
+
 - `src/plugin.ts` – plugin definition and tool export
 - `src/index.ts` – example CLI wiring with Hedera Agent Kit
+- `src/client.ts` – helper to construct a LangChain agent using this plugin
 - `src/bonzo/bonzo-market-service.ts` – market API service
-- `src/bonzo/utils.ts` – shared helpers (amount conversion, onBehalfOf, response)
+- `src/bonzo/utils.ts` – shared helpers (amount conversion, address resolution, response helpers)
 - `src/bonzo/bonzo.zod.ts` – Zod schemas for tools
-- `src/tools/*.ts` – individual tool implementations
+- `src/tools/*.ts` – individual tool implementations (approve, deposit, withdraw, borrow, repay)
 - `bonzo-contracts.json` – master contract addresses by network
 
 Commands
+
 ```bash
 bun run src/index.ts        # run local example agent
 bun --watch src/index.ts    # dev watch mode
+bun test                    # once tests are added
 ```
 
 Environment
-- `ACCOUNT_ID`, `PRIVATE_KEY` (required for AUTONOMOUS mode execution)
-- Choose network by constructing the Hashgraph SDK client appropriately (testnet/mainnet)
+
+- `OPENAI_API_KEY` (required for the CLI agent)
+- `ACCOUNT_ID`, `PRIVATE_KEY` (or `HEDERA_ACCOUNT_ID`, `HEDERA_PRIVATE_KEY`) for autonomous mode
+- `HEDERA_NETWORK` = `testnet` | `mainnet` (default `testnet`)
+- Optional per-tool overrides: `BONZO_GAS_*`, `BONZO_MAX_FEE_HBAR_*`
+
+Security & Configuration
+
+- Do not commit secrets or `.env` files. Bun loads `.env` locally.
+- Choose client network via `Client.forTestnet()`/`Client.forMainnet()` (see `src/index.ts`).
 
 ## Notes & Caveats
+
 - Some assets may require token association on Hedera prior to actions
 - Repay and deposit require underlying token approvals
 - For HBAR-native flows, wrapping/unwrapping may be needed via gateway contracts
-- Testnet has fewer markets than mainnet; tools will return a clear error listing available symbols on the selected network when a token isn’t configured.
+- Testnet has fewer markets than mainnet; tools will error with available symbols if a token isn’t configured on the selected network
 
 ## Related Docs
+
 - Aave v2 Developer Docs (ABIs and function signatures)
 - Hedera Agent Kit – Plugins & Tools documentation
 - Bonzo public market API
