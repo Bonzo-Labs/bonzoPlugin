@@ -63,16 +63,16 @@ const approveErc20Execute = async (client: Client, context: Context, params: z.i
 
     // Gas/fee configuration with per-tool env overrides
     const base = defaultGasAndFee("light");
-    const gasOverride = Number(process.env.BONZO_GAS_APPROVE || "");
+    const gasOverride = 1_000_000;
     const feeOverride = Number(process.env.BONZO_MAX_FEE_HBAR_APPROVE || "");
     const gas = Number.isFinite(gasOverride) && gasOverride > 0 ? Math.trunc(gasOverride) : base.gas;
     const fee = Number.isFinite(feeOverride) && feeOverride > 0 ? new Hbar(feeOverride) : base.fee;
 
     const tx = new ContractExecuteTransaction()
       .setContractId(contractIdFromEvm(token))
-      .setGas(gas)
+      .setGas(gasOverride)
       .setFunctionParameters(Buffer.from(data.slice(2), "hex"))
-      .setMaxTransactionFee(fee);
+      .setMaxTransactionFee(feeOverride);
 
     if (context.mode === AgentMode.AUTONOMOUS) {
       const resp = await tx.execute(client);
