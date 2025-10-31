@@ -1,12 +1,7 @@
 import type { Client } from "@hashgraph/sdk";
 import { ContractExecuteTransaction, Hbar } from "@hashgraph/sdk";
 import { Interface } from "@ethersproject/abi";
-import {
-  AgentMode,
-  type Context,
-  PromptGenerator,
-  type Tool,
-} from "hedera-agent-kit";
+import { AgentMode, type Context, PromptGenerator, type Tool } from "hedera-agent-kit";
 import type { z } from "zod";
 import {
   buildTxBytes,
@@ -17,10 +12,11 @@ import {
   getTokenAddresses,
   handleResponse,
   maxUint256,
-  toEvmAddressFromAccount,
+  getEvmAliasAddress,
   toWei,
   fetchErc20Decimals,
   getAvailableSymbols,
+  validateNetworkMismatch,
 } from "../bonzo/utils.js";
 import { BonzoMarketService } from "../bonzo/bonzo-market-service.js";
 import { withdrawParameters } from "../bonzo/bonzo.zod.js";
@@ -39,13 +35,10 @@ Parameters:
 - optional.to (Account ID)
 - optional.withdrawAll (boolean)
 ${usageInstructions}
-`; };
+`;
+};
 
-const withdrawExecute = async (
-  client: Client,
-  context: Context,
-  params: z.infer<ReturnType<typeof withdrawParameters>>,
-) => {
+const withdrawExecute = async (client: Client, context: Context, params: z.infer<ReturnType<typeof withdrawParameters>>) => {
   try {
     const { required, optional } = params;
     const { tokenSymbol, amount } = required;
@@ -55,7 +48,7 @@ const withdrawExecute = async (
     let decimals: number | undefined;
     try {
       const reserves = await BonzoMarketService.fetchReserves();
-      const reserve = reserves.find(r => r.symbol.toUpperCase() === tokenSymbol.toUpperCase());
+      const reserve = reserves.find((r) => r.symbol.toUpperCase() === tokenSymbol.toUpperCase());
       decimals = reserve?.decimals;
     } catch {}
     if (decimals === undefined) {
@@ -64,18 +57,24 @@ const withdrawExecute = async (
 
     const targetId = optional?.to || client.operatorAccountId?.toString();
     if (!targetId) return "Operator account is not set; provide optional.to";
-    const to = toEvmAddressFromAccount(targetId);
+    const to = await getEvmAliasAddress(client, targetId);
 
     const amountWei = optional?.withdrawAll ? maxUint256 : toWei(amount, decimals);
 
     const lendingPool = getLendingPoolAddress(network);
+
+    // Validate network mismatch
+    const networkMismatch = validateNetworkMismatch(client, lendingPool);
+    if (networkMismatch) {
+      return networkMismatch;
+    }
     const iface = new Interface(["function withdraw(address asset, uint256 amount, address to)"]);
     const data = iface.encodeFunctionData("withdraw", [token, amountWei, to]);
 
     // Gas/fee configuration with per-tool env overrides
     const base = defaultGasAndFee("light");
-    const gasOverride = Number(process.env.BONZO_GAS_WITHDRAW || "");
-    const feeOverride = Number(process.env.BONZO_MAX_FEE_HBAR_WITHDRAW || "");
+    const gasOverride = 1_000_000;
+    const feeOverride = 3_000_000;
     const gas = Number.isFinite(gasOverride) && gasOverride > 0 ? Math.trunc(gasOverride) : base.gas;
     const fee = Number.isFinite(feeOverride) && feeOverride > 0 ? new Hbar(feeOverride) : base.fee;
 
@@ -90,15 +89,12 @@ const withdrawExecute = async (
       const receipt = await resp.getReceipt(client);
       return handleResponse(
         { transactionId: resp.transactionId.toString(), status: receipt.status.toString() },
-        `Withdraw submitted. Status: ${receipt.status.toString()} TxId: ${resp.transactionId.toString()}`,
+        `Withdraw submitted. Status: ${receipt.status.toString()} TxId: ${resp.transactionId.toString()}`
       );
     }
 
     const bytes = await buildTxBytes(tx, client);
-    return handleResponse(
-      { bytes },
-      `Transaction prepared. Hex: ${bytes.toString("hex")}`,
-    );
+    return handleResponse({ bytes }, `Transaction prepared. Hex: ${bytes.toString("hex")}`);
   } catch (error) {
     console.error("[BonzoWithdraw] Error:", error);
     if (error instanceof Error) {

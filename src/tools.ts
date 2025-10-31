@@ -4,6 +4,7 @@ import { BonzoMarketService } from "./bonzo/bonzo-market-service.js";
 import { Interface } from "@ethersproject/abi";
 import { ContractExecuteTransaction, Hbar, ContractId } from "@hashgraph/sdk";
 import BigNumber from "bignumber.js";
+import { getLendingPoolAddress, formatAddress } from "./bonzo/utils.js";
 
 /**
  * Zod schema for Bonzo Market Data Tool parameters
@@ -30,10 +31,17 @@ The tool provides:
 - Current variable borrow APY for each token  
 - Token liquidity information
 - Market utilization rates
+- Mainnet LendingPool contract address (shown as Hedera Account ID (EVM Address) format: 0.0.xxxxx (0x...))
+- Token addresses (shown as Hedera Account ID (EVM Address) format: 0.0.xxxxx (0x...))
+
+IMPORTANT: When asked about the Bonzo lending pool address on mainnet, you MUST use this tool to get the accurate address. The API returns mainnet data, and this tool includes the mainnet LendingPool address from the contracts configuration.
 
 No parameters required - simply call this tool to get the latest Bonzo market data.
 
-Example usage: "Tell me the current tokens supported by Bonzo and the supply/borrow APYs"
+Example usage: 
+- "Tell me the current tokens supported by Bonzo and the supply/borrow APYs"
+- "What is the bonzo lending pool address on mainnet?"
+- "Get bonzo lending pool address"
 `;
 };
 
@@ -47,6 +55,9 @@ const formatMarketData = (reserves: any[]): string => {
 
   const timestamp = new Date().toISOString();
   let summary = `Bonzo Finance Market Data (as of ${timestamp})\n\n`;
+
+  // Get mainnet lending pool address (API returns mainnet data)
+  const mainnetLendingPoolAddress = getLendingPoolAddress("hedera_mainnet");
 
   // Sort by supply APY descending for better readability
   const sortedReserves = [...reserves].sort((a, b) => b.supplyAPY - a.supplyAPY);
@@ -65,12 +76,19 @@ const formatMarketData = (reserves: any[]): string => {
     summary += `   📈 Borrow APY: ${borrowAPY}%\n`;
     summary += `   💧 Available Liquidity: $${liquidityUSD}\n`;
     summary += `   📊 Utilization: ${utilization}%\n`;
-    summary += `   🏷️  HTS Address: ${reserve.htsAddress}\n\n`;
+    const tokenEvmAddress = reserve.evmAddress;
+    const formattedTokenAddress = tokenEvmAddress && tokenEvmAddress.startsWith("0x") ? formatAddress(tokenEvmAddress) : reserve.htsAddress || "N/A";
+    summary += `   🏷️  Address: ${formattedTokenAddress}\n\n`;
   });
 
   summary += `Total Markets: ${reserves.length}\n`;
   summary += `Highest Supply APY: ${Math.max(...reserves.map((r) => r.supplyAPY)).toFixed(2)}%\n`;
-  summary += `Lowest Borrow APY: ${Math.min(...reserves.map((r) => r.variableBorrowAPY)).toFixed(2)}%`;
+  summary += `Lowest Borrow APY: ${Math.min(...reserves.map((r) => r.variableBorrowAPY)).toFixed(2)}%\n\n`;
+  summary += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+  summary += `🏦 MAINNET LENDING POOL ADDRESS\n`;
+  summary += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+  summary += `Address: ${formatAddress(mainnetLendingPoolAddress)}\n`;
+  summary += `\nNote: This is the mainnet address. The API returns mainnet data (chain_id: 295).`;
 
   return summary;
 };

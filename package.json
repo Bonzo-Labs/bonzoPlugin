@@ -1,23 +1,70 @@
 {
-  "name": "bonzo",
-  "module": "index.ts",
+  "name": "@bonzofinancelabs/hak-bonzo-plugin",
+  "version": "1.0.0",
+  "description": "The official Hedera Agent Kit plugin for Bonzo Finance - Aave v2-compatible lending protocol on Hedera",
+  "private": false,
   "type": "module",
-  "private": true,
-  "devDependencies": {
-    "@types/bun": "latest",
-    "@types/prompts": "^2.4.9"
+  "main": "./src/plugin.ts",
+  "types": "./src/plugin.ts",
+  "exports": {
+    ".": {
+      "types": "./src/plugin.ts",
+      "import": "./src/plugin.ts"
+    }
   },
-  "peerDependencies": {
-    "typescript": "^5"
+  "files": [
+    "src/**/*",
+    "bonzo-contracts.json",
+    "README.md",
+    "LICENSE"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Bonzo-Labs/bonzoPlugin.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Bonzo-Labs/bonzoPlugin/issues"
+  },
+  "keywords": [
+    "bonzo",
+    "bonzo-finance",
+    "aave",
+    "lending",
+    "defi",
+    "hedera",
+    "agent-kit",
+    "plugin"
+  ],
+  "author": "Bonzo Finance Labs",
+  "license": "MIT",
+  "scripts": {
+    "start": "bun run src/index.ts",
+    "test": "echo \"Error: no test specified\" && exit 1"
   },
   "dependencies": {
     "@ethersproject/abi": "^5.8.0",
-    "@hashgraph/sdk": "^2.69.0",
-    "@langchain/openai": "^0.6.3",
     "bignumber.js": "^9.3.1",
-    "hedera-agent-kit": "^3.2.0",
+    "zod": "^3.25.76"
+  },
+  "devDependencies": {
+    "@langchain/openai": "^0.6.3",
+    "@types/bun": "latest",
+    "@types/prompts": "^2.4.9",
+    "dotenv": "^16.4.5",
     "langchain": "^0.3.30",
     "prompts": "^2.4.2",
-    "zod": "^3.25.76"
+    "typescript": "^5"
+  },
+  "peerDependencies": {
+    "@hashgraph/sdk": "^2.74.0",
+    "hedera-agent-kit": "^3.4.0"
+  },
+  "peerDependenciesMeta": {
+    "@hashgraph/sdk": {
+      "optional": false
+    },
+    "hedera-agent-kit": {
+      "optional": false
+    }
   }
 }

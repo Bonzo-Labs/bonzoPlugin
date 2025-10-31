@@ -1,12 +1,7 @@
 import type { Client } from "@hashgraph/sdk";
 import { ContractExecuteTransaction, Hbar } from "@hashgraph/sdk";
 import { Interface } from "@ethersproject/abi";
-import {
-  AgentMode,
-  type Context,
-  PromptGenerator,
-  type Tool,
-} from "hedera-agent-kit";
+import { AgentMode, type Context, PromptGenerator, type Tool } from "hedera-agent-kit";
 import type { z } from "zod";
 import {
   buildTxBytes,
@@ -16,10 +11,11 @@ import {
   getNetworkKey,
   getTokenAddresses,
   handleResponse,
-  toEvmAddressFromAccount,
+  getEvmAliasAddress,
   toWei,
   fetchErc20Decimals,
   getAvailableSymbols,
+  validateNetworkMismatch,
 } from "../bonzo/utils.js";
 import { BonzoMarketService } from "../bonzo/bonzo-market-service.js";
 import { depositParameters } from "../bonzo/bonzo.zod.js";
@@ -38,13 +34,10 @@ Parameters:
 - optional.onBehalfOf (Account ID)
 - optional.referralCode (number, default 0)
 ${usageInstructions}
-`; };
+`;
+};
 
-const depositExecute = async (
-  client: Client,
-  context: Context,
-  params: z.infer<ReturnType<typeof depositParameters>>,
-) => {
+const depositExecute = async (client: Client, context: Context, params: z.infer<ReturnType<typeof depositParameters>>) => {
   try {
     const { required, optional } = params;
     const { tokenSymbol, amount } = required;
@@ -55,7 +48,7 @@ const depositExecute = async (
     let decimals: number | undefined;
     try {
       const reserves = await BonzoMarketService.fetchReserves();
-      const reserve = reserves.find(r => r.symbol.toUpperCase() === tokenSymbol.toUpperCase());
+      const reserve = reserves.find((r) => r.symbol.toUpperCase() === tokenSymbol.toUpperCase());
       decimals = reserve?.decimals;
     } catch {}
     if (decimals === undefined) {
@@ -65,18 +58,22 @@ const depositExecute = async (
     const amountWei = toWei(amount, decimals);
     const onBehalfOfId = optional?.onBehalfOf || client.operatorAccountId?.toString();
     if (!onBehalfOfId) return "Operator account is not set; provide optional.onBehalfOf";
-    const onBehalfOf = toEvmAddressFromAccount(onBehalfOfId);
+    const onBehalfOf = await getEvmAliasAddress(client, onBehalfOfId);
 
     const lendingPool = getLendingPoolAddress(network);
-    const iface = new Interface([
-      "function deposit(address asset, uint256 amount, address onBehalfOf, uint16 referralCode)",
-    ]);
+
+    // Validate network mismatch
+    const networkMismatch = validateNetworkMismatch(client, lendingPool);
+    if (networkMismatch) {
+      return networkMismatch;
+    }
+    const iface = new Interface(["function deposit(address asset, uint256 amount, address onBehalfOf, uint16 referralCode)"]);
     const data = iface.encodeFunctionData("deposit", [token, amountWei, onBehalfOf, referralCode]);
 
     // Gas/fee configuration with per-tool env overrides
     const base = defaultGasAndFee("heavy");
-    const gasOverride = Number(process.env.BONZO_GAS_DEPOSIT || "");
-    const feeOverride = Number(process.env.BONZO_MAX_FEE_HBAR_DEPOSIT || "");
+    const gasOverride = 1_000_000;
+    const feeOverride = 3_000_000;
     const gas = Number.isFinite(gasOverride) && gasOverride > 0 ? Math.trunc(gasOverride) : base.gas;
     const fee = Number.isFinite(feeOverride) && feeOverride > 0 ? new Hbar(feeOverride) : base.fee;
 
@@ -91,15 +88,12 @@ const depositExecute = async (
       const receipt = await resp.getReceipt(client);
       return handleResponse(
         { transactionId: resp.transactionId.toString(), status: receipt.status.toString() },
-        `Deposit submitted. Status: ${receipt.status.toString()} TxId: ${resp.transactionId.toString()}`,
+        `Deposit submitted. Status: ${receipt.status.toString()} TxId: ${resp.transactionId.toString()}`
       );
     }
 
     const bytes = await buildTxBytes(tx, client);
-    return handleResponse(
-      { bytes },
-      `Transaction prepared. Hex: ${bytes.toString("hex")}`,
-    );
+    return handleResponse({ bytes }, `Transaction prepared. Hex: ${bytes.toString("hex")}`);
   } catch (error) {
     console.error("[BonzoDeposit] Error:", error);
     if (error instanceof Error) {

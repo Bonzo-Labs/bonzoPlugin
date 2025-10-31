@@ -15,6 +15,7 @@ import {
   toWei,
   fetchErc20Decimals,
   getAvailableSymbols,
+  validateNetworkMismatch,
 } from "../bonzo/utils.js";
 import { BonzoMarketService } from "../bonzo/bonzo-market-service.js";
 import { approveErc20Parameters } from "../bonzo/bonzo.zod.js";
@@ -44,6 +45,14 @@ const approveErc20Execute = async (client: Client, context: Context, params: z.i
     const { token } = getTokenAddresses(tokenSymbol.toUpperCase(), network);
     const spender = (optional?.spender as `0x${string}`) || getLendingPoolAddress(network);
 
+    // Validate network mismatch (only check if spender is the lending pool)
+    if (!optional?.spender) {
+      const networkMismatch = validateNetworkMismatch(client, spender);
+      if (networkMismatch) {
+        return networkMismatch;
+      }
+    }
+
     // Get decimals from market API for conversion
     let decimals: number | undefined;
     try {
@@ -64,15 +73,15 @@ const approveErc20Execute = async (client: Client, context: Context, params: z.i
     // Gas/fee configuration with per-tool env overrides
     const base = defaultGasAndFee("light");
     const gasOverride = 1_000_000;
-    const feeOverride = Number(process.env.BONZO_MAX_FEE_HBAR_APPROVE || "");
+    const feeOverrideEnv = Number(process.env.BONZO_MAX_FEE_HBAR_APPROVE || "");
     const gas = Number.isFinite(gasOverride) && gasOverride > 0 ? Math.trunc(gasOverride) : base.gas;
-    const fee = Number.isFinite(feeOverride) && feeOverride > 0 ? new Hbar(feeOverride) : base.fee;
+    const fee = Number.isFinite(feeOverrideEnv) && feeOverrideEnv > 0 ? new Hbar(feeOverrideEnv) : base.fee;
 
     const tx = new ContractExecuteTransaction()
       .setContractId(contractIdFromEvm(token))
-      .setGas(gasOverride)
+      .setGas(gas)
       .setFunctionParameters(Buffer.from(data.slice(2), "hex"))
-      .setMaxTransactionFee(feeOverride);
+      .setMaxTransactionFee(fee);
 
     if (context.mode === AgentMode.AUTONOMOUS) {
       const resp = await tx.execute(client);
