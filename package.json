@@ -4,23 +4,28 @@
   "description": "The official Hedera Agent Kit plugin for Bonzo Finance - Aave v2-compatible lending protocol on Hedera",
   "private": false,
   "type": "module",
-  "main": "./src/plugin.ts",
-  "types": "./src/plugin.ts",
+  "main": "./dist/plugin.cjs",
+  "module": "./dist/plugin.js",
+  "types": "./dist/plugin.d.ts",
+  "engines": {
+    "node": ">=18"
+  },
   "exports": {
     ".": {
-      "types": "./src/plugin.ts",
-      "import": "./src/plugin.ts"
+      "types": "./dist/plugin.d.ts",
+      "require": "./dist/plugin.cjs",
+      "import": "./dist/plugin.js"
     }
   },
   "files": [
-    "src/**/*",
+    "dist/**/*",
     "bonzo-contracts.json",
     "README.md",
     "LICENSE"
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/Bonzo-Labs/bonzoPlugin.git"
+    "url": "https://github.com/Bonzo-Labs/bonzoPlugin"
   },
   "bugs": {
     "url": "https://github.com/Bonzo-Labs/bonzoPlugin/issues"
@@ -38,6 +43,7 @@
   "author": "Bonzo Finance Labs",
   "license": "MIT",
   "scripts": {
+    "build": "tsup",
     "start": "bun run src/index.ts",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
@@ -53,6 +59,7 @@
     "dotenv": "^16.4.5",
     "langchain": "^0.3.30",
     "prompts": "^2.4.2",
+    "tsup": "^8.5.0",
     "typescript": "^5"
   },
   "peerDependencies": {
