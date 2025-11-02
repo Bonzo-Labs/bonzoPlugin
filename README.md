@@ -2,6 +2,25 @@
 
 A plugin for [Hedera Agent Kit](https://github.com/hashgraph/hedera-agent-kit) that provides seamless integration with [Bonzo Finance](https://bonzo.finance), an Aave v2–compatible lending protocol on the Hedera network.
 
+---
+
+## ⚠️ **IMPORTANT DISCLAIMER**
+
+**Bonzo Finance Labs is NOT responsible for any loss incurred by using this SDK plugin. This software is provided "as is" without warranty of any kind.**
+
+**⚠️ USE AT YOUR OWN RISK ⚠️**
+
+- **Do Your Own Research (DYOR)** before using this plugin
+- **Always test on testnet first** before using on mainnet
+- This plugin interacts with smart contracts and financial protocols
+- Cryptocurrency transactions are irreversible
+- Always verify contract addresses and parameters before executing transactions
+- The authors and maintainers assume no liability for any losses, damages, or consequences arising from the use of this software
+
+By using this plugin, you acknowledge that you understand the risks and agree to use it at your own discretion.
+
+---
+
 ## Overview
 
 The Bonzo plugin enables AI agents to interact with the Bonzo lending protocol, providing comprehensive functionality for:

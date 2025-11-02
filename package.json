@@ -1,7 +1,7 @@
 {
   "name": "@bonzofinancelabs/hak-bonzo-plugin",
-  "version": "1.0.0",
-  "description": "The official Hedera Agent Kit plugin for Bonzo Finance - Aave v2-compatible lending protocol on Hedera",
+  "version": "1.0.1",
+  "description": "The official Hedera Agent Kit plugin for Bonzo Finance - Aave v2-compatible lending protocol on Hedera. ⚠️ USE AT YOUR OWN RISK - Always test on testnet first. Bonzo Finance Labs is NOT responsible for any losses.",
   "private": false,
   "type": "module",
   "main": "./dist/plugin.cjs",
