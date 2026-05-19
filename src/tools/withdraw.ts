@@ -1,21 +1,31 @@
-import type { Client } from "@hashgraph/sdk";
-import { ContractExecuteTransaction, Hbar } from "@hashgraph/sdk";
+import {
+  BaseTool,
+  type Context,
+  handleTransaction,
+  PromptGenerator,
+  type RawTransactionResponse,
+  transactionToolOutputParser,
+} from "@hashgraph/hedera-agent-kit";
+import {
+  type Client,
+  ContractExecuteTransaction,
+  Hbar,
+  Transaction,
+} from "@hiero-ledger/sdk";
 import { Interface } from "@ethersproject/abi";
-import { AgentMode, type Context, PromptGenerator, type Tool } from "hedera-agent-kit";
 import type { z } from "zod";
 import {
-  buildTxBytes,
   contractIdFromEvm,
   defaultGasAndFee,
+  getAvailableSymbols,
+  getEvmAliasAddress,
   getLendingPoolAddress,
   getNetworkKey,
   getTokenAddresses,
   handleResponse,
   maxUint256,
-  getEvmAliasAddress,
   toWei,
   fetchErc20Decimals,
-  getAvailableSymbols,
   validateNetworkMismatch,
 } from "../bonzo/utils.js";
 import { BonzoMarketService } from "../bonzo/bonzo-market-service.js";
@@ -38,82 +48,101 @@ ${usageInstructions}
 `;
 };
 
-const withdrawExecute = async (client: Client, context: Context, params: z.infer<ReturnType<typeof withdrawParameters>>) => {
-  try {
-    const { required, optional } = params;
-    const { tokenSymbol, amount } = required;
-    const network = getNetworkKey(client);
-    const { token } = getTokenAddresses(tokenSymbol.toUpperCase(), network);
+const withdrawPostProcess = (response: RawTransactionResponse) =>
+  `Withdraw submitted. Status: ${response.status} TxId: ${response.transactionId}`;
 
-    let decimals: number | undefined;
-    try {
-      const reserves = await BonzoMarketService.fetchReserves();
-      const reserve = reserves.find((r) => r.symbol.toUpperCase() === tokenSymbol.toUpperCase());
-      decimals = reserve?.decimals;
-    } catch {}
-    if (decimals === undefined) {
-      decimals = await fetchErc20Decimals(client, token);
-    }
-
-    const targetId = optional?.to || client.operatorAccountId?.toString();
-    if (!targetId) return "Operator account is not set; provide optional.to";
-    const to = await getEvmAliasAddress(client, targetId);
-
-    const amountWei = optional?.withdrawAll ? maxUint256 : toWei(amount, decimals);
-
-    const lendingPool = getLendingPoolAddress(network);
-
-    // Validate network mismatch
-    const networkMismatch = validateNetworkMismatch(client, lendingPool);
-    if (networkMismatch) {
-      return networkMismatch;
-    }
-    const iface = new Interface(["function withdraw(address asset, uint256 amount, address to)"]);
-    const data = iface.encodeFunctionData("withdraw", [token, amountWei, to]);
-
-    // Gas/fee configuration with per-tool env overrides
-    const base = defaultGasAndFee("light");
-    const gasOverride = 1_000_000;
-    const feeOverride = 3_000_000;
-    const gas = Number.isFinite(gasOverride) && gasOverride > 0 ? Math.trunc(gasOverride) : base.gas;
-    const fee = Number.isFinite(feeOverride) && feeOverride > 0 ? new Hbar(feeOverride) : base.fee;
-
-    const tx = new ContractExecuteTransaction()
-      .setContractId(contractIdFromEvm(lendingPool))
-      .setGas(gas)
-      .setFunctionParameters(Buffer.from(data.slice(2), "hex"))
-      .setMaxTransactionFee(fee);
-
-    if (context.mode === AgentMode.AUTONOMOUS) {
-      const resp = await tx.execute(client);
-      const receipt = await resp.getReceipt(client);
-      return handleResponse(
-        { transactionId: resp.transactionId.toString(), status: receipt.status.toString() },
-        `Withdraw submitted. Status: ${receipt.status.toString()} TxId: ${resp.transactionId.toString()}`
-      );
-    }
-
-    const bytes = await buildTxBytes(tx, client);
-    return handleResponse({ bytes }, `Transaction prepared. Hex: ${bytes.toString("hex")}`);
-  } catch (error) {
-    console.error("[BonzoWithdraw] Error:", error);
-    if (error instanceof Error) {
-      const network = getNetworkKey(client);
-      const available = getAvailableSymbols(network).join(", ");
-      return `Withdraw failed: ${error.message}. Network: ${network}. Available tokens: ${available || "<none>"}`;
-    }
-    return "Withdraw failed";
-  }
-};
+type WithdrawParams = z.infer<ReturnType<typeof withdrawParameters>>;
 
 export const BONZO_WITHDRAW_TOOL = "bonzo_withdraw_tool";
 
-const tool = (context: Context): Tool => ({
-  method: BONZO_WITHDRAW_TOOL,
-  name: "Bonzo Withdraw",
-  description: withdrawPrompt(context),
-  parameters: withdrawParameters(context),
-  execute: withdrawExecute,
-});
+export class BonzoWithdrawTool extends BaseTool<WithdrawParams, WithdrawParams> {
+  method = BONZO_WITHDRAW_TOOL;
+  name = "Bonzo Withdraw";
+  description: string;
+  parameters: ReturnType<typeof withdrawParameters>;
+  override outputParser = transactionToolOutputParser;
+
+  constructor(context: Context) {
+    super();
+    this.description = withdrawPrompt(context);
+    this.parameters = withdrawParameters(context);
+  }
+
+  async normalizeParams(
+    params: WithdrawParams,
+    _context: Context,
+    _client: Client,
+  ): Promise<WithdrawParams> {
+    return params;
+  }
+
+  async coreAction(params: WithdrawParams, _context: Context, client: Client) {
+    try {
+      const { required, optional } = params;
+      const { tokenSymbol, amount } = required;
+      const network = getNetworkKey(client);
+      const { token } = getTokenAddresses(tokenSymbol.toUpperCase(), network);
+
+      let decimals: number | undefined;
+      try {
+        const reserves = await BonzoMarketService.fetchReserves();
+        const reserve = reserves.find((r) => r.symbol.toUpperCase() === tokenSymbol.toUpperCase());
+        decimals = reserve?.decimals;
+      } catch {}
+      if (decimals === undefined) {
+        decimals = await fetchErc20Decimals(client, token);
+      }
+
+      const targetId = optional?.to || client.operatorAccountId?.toString();
+      if (!targetId) {
+        const message = "Operator account is not set; provide optional.to";
+        return handleResponse({ error: message }, message);
+      }
+      const to = await getEvmAliasAddress(client, targetId);
+
+      const amountWei = optional?.withdrawAll ? maxUint256 : toWei(amount, decimals);
+
+      const lendingPool = getLendingPoolAddress(network);
+
+      const networkMismatch = validateNetworkMismatch(client, lendingPool);
+      if (networkMismatch) {
+        return handleResponse({ error: networkMismatch }, networkMismatch);
+      }
+      const iface = new Interface(["function withdraw(address asset, uint256 amount, address to)"]);
+      const data = iface.encodeFunctionData("withdraw", [token, amountWei, to]);
+
+      const base = defaultGasAndFee("light");
+      const gasOverride = 1_000_000;
+      const feeOverride = 3_000_000;
+      const gas = Number.isFinite(gasOverride) && gasOverride > 0 ? Math.trunc(gasOverride) : base.gas;
+      const fee = Number.isFinite(feeOverride) && feeOverride > 0 ? new Hbar(feeOverride) : base.fee;
+
+      return new ContractExecuteTransaction()
+        .setContractId(contractIdFromEvm(lendingPool))
+        .setGas(gas)
+        .setFunctionParameters(Buffer.from(data.slice(2), "hex"))
+        .setMaxTransactionFee(fee);
+    } catch (error) {
+      console.error("[BonzoWithdraw] Error:", error);
+      const network = getNetworkKey(client);
+      const available = getAvailableSymbols(network).join(", ");
+      const message =
+        error instanceof Error
+          ? `Withdraw failed: ${error.message}. Network: ${network}. Available tokens: ${available || "<none>"}`
+          : "Withdraw failed";
+      return handleResponse({ error: message }, message);
+    }
+  }
+
+  override async shouldSecondaryAction(coreActionResult: unknown, _context: Context) {
+    return coreActionResult instanceof Transaction;
+  }
+
+  async secondaryAction(transaction: Transaction, client: Client, context: Context) {
+    return await handleTransaction(transaction, client, context, withdrawPostProcess);
+  }
+}
+
+const tool = (context: Context) => new BonzoWithdrawTool(context);
 
 export default tool;

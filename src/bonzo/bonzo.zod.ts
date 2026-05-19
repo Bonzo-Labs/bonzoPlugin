@@ -1,5 +1,5 @@
 import z from "zod";
-import type { Context } from "hedera-agent-kit";
+import type { Context } from "@hashgraph/hedera-agent-kit";
 
 export const approveErc20Parameters = (_: Context = {}) =>
   z.object({

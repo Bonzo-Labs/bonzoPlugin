@@ -1,12 +1,23 @@
-import type { Client } from "@hashgraph/sdk";
-import { ContractExecuteTransaction, Hbar } from "@hashgraph/sdk";
+import {
+  BaseTool,
+  type Context,
+  handleTransaction,
+  PromptGenerator,
+  type RawTransactionResponse,
+  transactionToolOutputParser,
+} from "@hashgraph/hedera-agent-kit";
+import {
+  type Client,
+  ContractExecuteTransaction,
+  Hbar,
+  Transaction,
+} from "@hiero-ledger/sdk";
 import { Interface } from "@ethersproject/abi";
-import { AgentMode, type Context, PromptGenerator, type Tool } from "hedera-agent-kit";
 import type { z } from "zod";
 import {
-  buildTxBytes,
   contractIdFromEvm,
   defaultGasAndFee,
+  getAvailableSymbols,
   getLendingPoolAddress,
   getNetworkKey,
   getTokenAddresses,
@@ -14,7 +25,6 @@ import {
   maxUint256,
   toWei,
   fetchErc20Decimals,
-  getAvailableSymbols,
   validateNetworkMismatch,
 } from "../bonzo/utils.js";
 import { BonzoMarketService } from "../bonzo/bonzo-market-service.js";
@@ -37,82 +47,97 @@ ${usageInstructions}
 `;
 };
 
-const approveErc20Execute = async (client: Client, context: Context, params: z.infer<ReturnType<typeof approveErc20Parameters>>) => {
-  try {
-    const { required, optional } = params;
-    const { tokenSymbol, amount } = required;
-    const network = getNetworkKey(client);
-    const { token } = getTokenAddresses(tokenSymbol.toUpperCase(), network);
-    const spender = (optional?.spender as `0x${string}`) || getLendingPoolAddress(network);
+const approveErc20PostProcess = (response: RawTransactionResponse) =>
+  `Approve submitted. Status: ${response.status} TxId: ${response.transactionId}`;
 
-    // Validate network mismatch (only check if spender is the lending pool)
-    if (!optional?.spender) {
-      const networkMismatch = validateNetworkMismatch(client, spender);
-      if (networkMismatch) {
-        return networkMismatch;
-      }
-    }
-
-    // Get decimals from market API for conversion
-    let decimals: number | undefined;
-    try {
-      const reserves = await BonzoMarketService.fetchReserves();
-      const reserve = reserves.find((r) => r.symbol.toUpperCase() === tokenSymbol.toUpperCase());
-      decimals = reserve?.decimals;
-    } catch {}
-    if (decimals === undefined) {
-      // fallback to on-chain decimals for the selected network
-      decimals = await fetchErc20Decimals(client, token);
-    }
-
-    const value = optional?.useMax ? maxUint256 : toWei(amount, decimals);
-
-    const erc20Iface = new Interface(["function approve(address spender, uint256 amount)"]);
-    const data = erc20Iface.encodeFunctionData("approve", [spender, value]);
-
-    // Gas/fee configuration with per-tool env overrides
-    const base = defaultGasAndFee("light");
-    const gasOverride = 1_000_000;
-    const feeOverrideEnv = Number(process.env.BONZO_MAX_FEE_HBAR_APPROVE || "");
-    const gas = Number.isFinite(gasOverride) && gasOverride > 0 ? Math.trunc(gasOverride) : base.gas;
-    const fee = Number.isFinite(feeOverrideEnv) && feeOverrideEnv > 0 ? new Hbar(feeOverrideEnv) : base.fee;
-
-    const tx = new ContractExecuteTransaction()
-      .setContractId(contractIdFromEvm(token))
-      .setGas(gas)
-      .setFunctionParameters(Buffer.from(data.slice(2), "hex"))
-      .setMaxTransactionFee(fee);
-
-    if (context.mode === AgentMode.AUTONOMOUS) {
-      const resp = await tx.execute(client);
-      const receipt = await resp.getReceipt(client);
-      return handleResponse(
-        { transactionId: resp.transactionId.toString(), status: receipt.status.toString() },
-        `Approve submitted. Status: ${receipt.status.toString()} TxId: ${resp.transactionId.toString()}`
-      );
-    }
-
-    const bytes = await buildTxBytes(tx, client);
-    return handleResponse({ bytes }, `Transaction prepared. Hex: ${bytes.toString("hex")}`);
-  } catch (error) {
-    console.error("[ApproveERC20] Error:", error);
-    if (error instanceof Error) {
-      const network = getNetworkKey(client);
-      const available = getAvailableSymbols(network).join(", ");
-      return `Approve failed: ${error.message}. Network: ${network}. Available tokens: ${available || "<none>"}`;
-    }
-    return "Approve failed";
-  }
-};
+type ApproveErc20Params = z.infer<ReturnType<typeof approveErc20Parameters>>;
 
 export const APPROVE_ERC20_TOOL = "approve_erc20_tool";
 
-const tool = (context: Context): Tool => ({
-  method: APPROVE_ERC20_TOOL,
-  name: "Approve ERC20 for Bonzo",
-  description: approveErc20Prompt(context),
-  parameters: approveErc20Parameters(context),
-  execute: approveErc20Execute,
-});
+export class ApproveErc20Tool extends BaseTool<ApproveErc20Params, ApproveErc20Params> {
+  method = APPROVE_ERC20_TOOL;
+  name = "Approve ERC20 for Bonzo";
+  description: string;
+  parameters: ReturnType<typeof approveErc20Parameters>;
+  override outputParser = transactionToolOutputParser;
+
+  constructor(context: Context) {
+    super();
+    this.description = approveErc20Prompt(context);
+    this.parameters = approveErc20Parameters(context);
+  }
+
+  async normalizeParams(
+    params: ApproveErc20Params,
+    _context: Context,
+    _client: Client,
+  ): Promise<ApproveErc20Params> {
+    return params;
+  }
+
+  async coreAction(params: ApproveErc20Params, _context: Context, client: Client) {
+    try {
+      const { required, optional } = params;
+      const { tokenSymbol, amount } = required;
+      const network = getNetworkKey(client);
+      const { token } = getTokenAddresses(tokenSymbol.toUpperCase(), network);
+      const spender = (optional?.spender as `0x${string}`) || getLendingPoolAddress(network);
+
+      // Validate network mismatch (only check if spender is the lending pool)
+      if (!optional?.spender) {
+        const networkMismatch = validateNetworkMismatch(client, spender);
+        if (networkMismatch) {
+          return handleResponse({ error: networkMismatch }, networkMismatch);
+        }
+      }
+
+      let decimals: number | undefined;
+      try {
+        const reserves = await BonzoMarketService.fetchReserves();
+        const reserve = reserves.find((r) => r.symbol.toUpperCase() === tokenSymbol.toUpperCase());
+        decimals = reserve?.decimals;
+      } catch {}
+      if (decimals === undefined) {
+        decimals = await fetchErc20Decimals(client, token);
+      }
+
+      const value = optional?.useMax ? maxUint256 : toWei(amount, decimals);
+
+      const erc20Iface = new Interface(["function approve(address spender, uint256 amount)"]);
+      const data = erc20Iface.encodeFunctionData("approve", [spender, value]);
+
+      const base = defaultGasAndFee("light");
+      const gasOverride = 1_000_000;
+      const feeOverrideEnv = Number(process.env.BONZO_MAX_FEE_HBAR_APPROVE || "");
+      const gas = Number.isFinite(gasOverride) && gasOverride > 0 ? Math.trunc(gasOverride) : base.gas;
+      const fee = Number.isFinite(feeOverrideEnv) && feeOverrideEnv > 0 ? new Hbar(feeOverrideEnv) : base.fee;
+
+      return new ContractExecuteTransaction()
+        .setContractId(contractIdFromEvm(token))
+        .setGas(gas)
+        .setFunctionParameters(Buffer.from(data.slice(2), "hex"))
+        .setMaxTransactionFee(fee);
+    } catch (error) {
+      console.error("[ApproveERC20] Error:", error);
+      const network = getNetworkKey(client);
+      const available = getAvailableSymbols(network).join(", ");
+      const message =
+        error instanceof Error
+          ? `Approve failed: ${error.message}. Network: ${network}. Available tokens: ${available || "<none>"}`
+          : "Approve failed";
+      return handleResponse({ error: message }, message);
+    }
+  }
+
+  override async shouldSecondaryAction(coreActionResult: unknown, _context: Context) {
+    return coreActionResult instanceof Transaction;
+  }
+
+  async secondaryAction(transaction: Transaction, client: Client, context: Context) {
+    return await handleTransaction(transaction, client, context, approveErc20PostProcess);
+  }
+}
+
+const tool = (context: Context) => new ApproveErc20Tool(context);
 
 export default tool;

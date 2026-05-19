@@ -1,8 +1,8 @@
-import type { Tool, Context } from "hedera-agent-kit";
+import type { Tool, Context } from "@hashgraph/hedera-agent-kit";
 import { z } from "zod";
 import { BonzoMarketService } from "./bonzo/bonzo-market-service.js";
 import { Interface } from "@ethersproject/abi";
-import { ContractExecuteTransaction, Hbar, ContractId } from "@hashgraph/sdk";
+import { ContractExecuteTransaction, Hbar, ContractId } from "@hiero-ledger/sdk";
 import BigNumber from "bignumber.js";
 import { getLendingPoolAddress, formatAddress } from "./bonzo/utils.js";
 

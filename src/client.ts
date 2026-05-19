@@ -1,11 +1,14 @@
-import { HederaLangchainToolkit, AgentMode, coreAccountPlugin, coreQueriesPlugin } from "hedera-agent-kit";
+import { AgentMode } from "@hashgraph/hedera-agent-kit";
+import { allCorePlugins } from "@hashgraph/hedera-agent-kit/plugins";
+import {
+  HederaLangchainToolkit,
+  ResponseParserService,
+} from "@hashgraph/hedera-agent-kit-langchain";
 import { ChatOpenAI } from "@langchain/openai";
-import { ChatPromptTemplate } from "@langchain/core/prompts";
-import { AgentExecutor, createToolCallingAgent } from "langchain/agents";
-import { BufferMemory } from "langchain/memory";
-import type { Client } from "@hashgraph/sdk";
+import { createAgent } from "langchain";
+import { MemorySaver } from "@langchain/langgraph";
+import type { Client } from "@hiero-ledger/sdk";
 import { bonzoPlugin } from "./plugin.ts";
-// core plugins are imported above
 
 type CreateClientArgs = {
   client: Client;
@@ -14,17 +17,21 @@ type CreateClientArgs = {
   toolsAllowlist?: string[];
 };
 
-export const createBonzoAgentClient = async ({ client, mode = AgentMode.RETURN_BYTES, pluginsOverride, toolsAllowlist = [] }: CreateClientArgs) => {
+export const createBonzoAgentClient = async ({
+  client,
+  mode = AgentMode.RETURN_BYTES,
+  pluginsOverride,
+  toolsAllowlist = [],
+}: CreateClientArgs) => {
   const llm = new ChatOpenAI({ model: "gpt-4.1" });
 
   const toolkit = new HederaLangchainToolkit({
     client,
     configuration: {
-      plugins: pluginsOverride || [bonzoPlugin, coreQueriesPlugin, coreAccountPlugin],
+      plugins: pluginsOverride || [bonzoPlugin, ...allCorePlugins],
       tools: toolsAllowlist,
       context: {
         mode,
-        // Accept both ACCOUNT_ID and HEDERA_ACCOUNT_ID
         accountId: process.env.ACCOUNT_ID || process.env.HEDERA_ACCOUNT_ID,
       },
     },
@@ -32,25 +39,16 @@ export const createBonzoAgentClient = async ({ client, mode = AgentMode.RETURN_B
 
   const tools = toolkit.getTools();
 
-  const prompt = ChatPromptTemplate.fromMessages([
-    ["system", "You are a helpful assistant"],
-    ["placeholder", "{chat_history}"],
-    ["human", "{input}"],
-    ["placeholder", "{agent_scratchpad}"],
-  ]);
-
-  const agent = createToolCallingAgent({ llm, tools, prompt });
-
-  const memory = new BufferMemory({
-    memoryKey: "chat_history",
-    inputKey: "input",
-    outputKey: "output",
-    returnMessages: true,
+  const agent = createAgent({
+    model: llm,
+    tools,
+    systemPrompt: "You are a helpful assistant",
+    checkpointer: new MemorySaver(),
   });
 
-  const agentExecutor = new AgentExecutor({ agent, tools, memory, returnIntermediateSteps: false });
+  const responseParser = new ResponseParserService(tools);
 
-  return { toolkit, tools, agent, agentExecutor };
+  return { toolkit, tools, agent, responseParser };
 };
 
 export default { createBonzoAgentClient };

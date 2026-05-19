@@ -1,4 +1,4 @@
-import type { Plugin, Context } from "hedera-agent-kit";
+import type { Plugin, Context } from "@hashgraph/hedera-agent-kit";
 import { bonzoMarketDataTool, BONZO_MARKET_DATA_TOOL } from "./tools.ts";
 import approveErc20, { APPROVE_ERC20_TOOL } from "./tools/approve-erc20.ts";
 import deposit, { BONZO_DEPOSIT_TOOL } from "./tools/deposit.ts";

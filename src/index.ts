@@ -1,6 +1,6 @@
 import "dotenv/config";
-import { AgentMode } from "hedera-agent-kit";
-import { Client, PrivateKey } from "@hashgraph/sdk";
+import { AgentMode } from "@hashgraph/hedera-agent-kit";
+import { Client, PrivateKey } from "@hiero-ledger/sdk";
 import prompts from "prompts";
 import { createBonzoAgentClient } from "./client.ts";
 
@@ -31,7 +31,7 @@ async function bootstrap(): Promise<void> {
     ? AgentMode.AUTONOMOUS
     : AgentMode.RETURN_BYTES;
 
-  const { agentExecutor } = await createBonzoAgentClient({
+  const { agent, responseParser } = await createBonzoAgentClient({
     client,
     mode,
   });
@@ -53,9 +53,28 @@ async function bootstrap(): Promise<void> {
     }
 
     try {
-      const response = await agentExecutor.invoke({ input: userInput });
-      // The structured-chat agent puts its final answer in `output`
-      console.log(`AI: ${response?.output ?? response}`);
+      const response = await agent.invoke(
+        { messages: [{ role: "user", content: userInput }] },
+        { configurable: { thread_id: "1" } },
+      );
+
+      const lastMessage = response.messages[response.messages.length - 1];
+      const aiText = lastMessage?.content ?? JSON.stringify(response);
+
+      const parsedToolData = responseParser.parseNewToolMessages(response);
+      const toolCall = parsedToolData[0];
+
+      if (!toolCall) {
+        console.log(`AI: ${aiText}`);
+      } else {
+        console.log(`\nAI: ${aiText}`);
+        console.log("\n--- Tool Data ---");
+        console.log("Direct tool response:", toolCall.parsedData.humanMessage);
+        console.log(
+          "Full tool response object:",
+          JSON.stringify(toolCall.parsedData, null, 2),
+        );
+      }
     } catch (err) {
       console.error("Error:", err);
     }

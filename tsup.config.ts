@@ -7,7 +7,12 @@ export default defineConfig([
     format: ["cjs", "esm"],
     dts: true,
     sourcemap: true,
-    external: ["@hashgraph/sdk", "hedera-agent-kit"],
+    external: [
+      "@hiero-ledger/sdk",
+      "@hashgraph/hedera-agent-kit",
+      "@hashgraph/hedera-agent-kit/langchain",
+      "@hashgraph/hedera-agent-kit-langchain",
+    ],
     outExtension({ format }) {
       return {
         js: format === "cjs" ? ".cjs" : ".js",

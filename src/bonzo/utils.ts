@@ -1,4 +1,4 @@
-import { AccountId, Client, ContractExecuteTransaction, ContractId, Hbar, ContractCallQuery, AccountInfoQuery } from "@hashgraph/sdk";
+import { AccountId, Client, ContractExecuteTransaction, ContractId, Hbar, ContractCallQuery, AccountInfoQuery } from "@hiero-ledger/sdk";
 import BigNumber from "bignumber.js";
 import { readFileSync } from "fs";
 import path from "path";
